@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <mpi.h>
 #include <unistd.h>
-#include <rpc/des_crypt.h>
+#include <openssl/des.h>
 
 void decrypt(long key, char *ciph, int len){
   //set parity of key and do decrypt
@@ -40,7 +40,7 @@ int tryKey(long key, char *ciph, int len){
 }
 
 unsigned char cipher[] = {108, 245, 65, 63, 125, 200, 150, 66, 17, 170, 207, 170, 34, 31, 70, 215, 0};
-int main(int argc, char *argv[]){ //char **argv
+int main(int argc, char **argv){ 
   int N, id;
   long upper = (1L <<56); //upper bound DES keys 2^56
   long mylower, myupper;
@@ -50,7 +50,7 @@ int main(int argc, char *argv[]){ //char **argv
   int ciphlen = strlen(cipher);
   MPI_Comm comm = MPI_COMM_WORLD;
 
-  MPI_Init(NULL, NULL);
+  MPI_Init(argc, argv);
   MPI_Comm_size(comm, &N);
   MPI_Comm_rank(comm, &id);
 
