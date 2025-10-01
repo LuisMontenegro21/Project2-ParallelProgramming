@@ -8,11 +8,11 @@ Use a VM that has Linux or use WSL if on windows.
 Open your terminal and run: <br>
 ```
 sudo apt update
-sudo apt install
+sudo apt install openmpi-bin libopenmpi-dev
 ```
 
 ### Compile
 Compile code using: <br>
-`mpicc <file.c> -o <executable>`
+`mpicc bruteforce.c -o bruteforce -lcrypto`
 And run using: <br>
-`mpirun <args> executable`
+`mpirun bruteforce`
