@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <mpi.h>
 #include <unistd.h>
-#include <openssl/des.h>
+#include <openssl/des.h> // deprecated for OpenSSl 3.0, but still usable. May show warnings
 #include <time.h>
 
 /*

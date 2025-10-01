@@ -1,6 +1,8 @@
 # Prerequisites
 *.d
 
+# compiled files
+bruteforce 
 # Object files
 *.o
 *.ko
