@@ -6,8 +6,11 @@
 #include <stdlib.h>
 #include <mpi.h>
 #include <unistd.h>
+
 #include <openssl/des.h> // deprecated for OpenSSl 3.0, but still usable. May show warnings
 #include <time.h>
+
+
 
 /*
 Reads file and returns a pointer to the content
@@ -84,9 +87,11 @@ int tryKey(long key, char *ciph, int len){
   return strstr((char *)temp, search) != NULL;
 }
 
+
 unsigned char cipher[] = {108, 245, 65, 63, 125, 200, 150, 66, 17, 170, 207, 170, 34, 31, 70, 215, 0}; // hardcoded cypher, temporary to experiment
 int main(int argc, char **argv){ 
   int size, rank;
+
   long upper = (1L <<56); //upper bound DES keys 2^56
   long mylower, myupper;
   MPI_Status status;
@@ -95,9 +100,11 @@ int main(int argc, char **argv){
   int ciphlen = strlen(cipher);
   MPI_Comm comm = MPI_COMM_WORLD;
 
+
   MPI_Init(NULL, NULL);
   MPI_Comm_size(comm, &size);
   MPI_Comm_rank(comm, &rank);
+
 
   // divide ranges among processes
   int range_per_node = upper / size; 
