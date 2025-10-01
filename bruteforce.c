@@ -7,7 +7,43 @@
 #include <mpi.h>
 #include <unistd.h>
 #include <openssl/des.h>
+#include <time.h>
 
+/*
+Reads file and returns a pointer to the content
+*/
+char* read_file(const char* file){
+  FILE *f = fopen(file, "rb");
+  if (f == NULL){
+    printf("Error opening file\n");
+    exit(1);
+  }
+  fseek(f, 0, SEEK_END);
+  long fsize = ftell(f);
+  fseek(f, 0, SEEK_SET);
+
+  char *string = malloc(fsize + 1);
+  if (string == NULL){
+    perror("Error allocating memory\n");
+    fclose(f);
+    exit(1);
+  }
+  if (fread(string, 1, fsize, f) != 1) {
+    perror("Error reading file\n");
+    fclose(f);
+    exit(1);
+  }
+  
+  string[fsize] = '\0';
+  fclose(f);  
+  return string;
+} 
+
+/*
+long key : key to use to decrypt
+char *ciph: message to be decrypted
+int len: length of message
+*/
 void decrypt(long key, char *ciph, int len){
   //set parity of key and do decrypt
   DES_cblock keyblock;
@@ -16,13 +52,18 @@ void decrypt(long key, char *ciph, int len){
   DES_key_schedule schedule;
   DES_set_key_checked(&keyblock, &schedule);
   for (int i = 0; i< len; i+=8)
-    DES_ecb_encrypt((DES_cblock *)(ciph+i), (DES_cblock *) (ciph + i), &schedule, DES_DECRYPT)
+    DES_ecb_encrypt((DES_cblock *)(ciph+i), (DES_cblock *) (ciph + i), &schedule, DES_DECRYPT);
 
 }
 
+/*
+long key : key to sue
+char *ciph: message to be encrypted
+int len: length of message
+*/
 void encrypt(long key, char *ciph, int len){
   DES_cblock keyblock;
-  memcpy(keybloc, &key, 8);
+  memcpy(keyblock, &key, 8);
   DES_set_odd_parity(&keyblock);
   DES_key_schedule schedule;
   DES_set_key_checked(&keyblock, &schedule);
@@ -30,7 +71,7 @@ void encrypt(long key, char *ciph, int len){
     DES_ecb_encrypt((DES_cblock *)(ciph+i), (DES_cblock *)(ciph+i), &schedule, DES_ENCRYPT);
 }
 
-char search[] = " the "; // search word
+char search[] = " the "; // search word , hard coded, needs fixing
 
 /*
 Tries different key combinations and returns a substring containing the match word
@@ -43,7 +84,7 @@ int tryKey(long key, char *ciph, int len){
   return strstr((char *)temp, search) != NULL;
 }
 
-unsigned char cipher[] = {108, 245, 65, 63, 125, 200, 150, 66, 17, 170, 207, 170, 34, 31, 70, 215, 0};
+unsigned char cipher[] = {108, 245, 65, 63, 125, 200, 150, 66, 17, 170, 207, 170, 34, 31, 70, 215, 0}; // hardcoded cypher, temporary to experiment
 int main(int argc, char **argv){ 
   int size, rank;
   long upper = (1L <<56); //upper bound DES keys 2^56
@@ -58,6 +99,7 @@ int main(int argc, char **argv){
   MPI_Comm_size(comm, &size);
   MPI_Comm_rank(comm, &rank);
 
+  // divide ranges among processes
   int range_per_node = upper / size; 
   mylower = range_per_node * rank;
   myupper = range_per_node * (rank+1) -1;
@@ -77,7 +119,7 @@ int main(int argc, char **argv){
         MPI_Send(&found, 1, MPI_LONG, node, 0, MPI_COMM_WORLD);
       }
       break;
-    }
+    }  
   }
 
   if(rank==0){
@@ -88,3 +130,4 @@ int main(int argc, char **argv){
 
   MPI_Finalize();
 }
+
