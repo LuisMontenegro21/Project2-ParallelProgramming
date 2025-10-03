@@ -43,6 +43,24 @@ char* read_file(const char* file){
 } 
 
 /*
+Input what to search for 
+*/
+void input_word(char **search, size_t size){
+  char buffer[32];
+  if (scanf("%31s", buffer)){
+    perror("error");
+    exit(1);
+  }
+  *size = strlen(buffer);
+  *search = malloc(size + 1);
+  if(search == NULL){
+    perror("Error allocating memory");
+    exit(1);
+  }
+  strcpy(*search, buffer);
+}
+
+/*
 long key : key to use to decrypt
 char *ciph: message to be decrypted
 int len: length of message
@@ -74,7 +92,9 @@ void encrypt(long key, char *ciph, int len){
     DES_ecb_encrypt((DES_cblock *)(ciph+i), (DES_cblock *)(ciph+i), &schedule, DES_ENCRYPT);
 }
 
-char search[] = " the "; // search word , hard coded, needs fixing
+// char search[] = " nombre "; // search word , hard coded, needs fixing
+char *search;
+size_t size;
 
 /*
 Tries different key combinations and returns a substring containing the match word
@@ -88,23 +108,28 @@ int tryKey(long key, char *ciph, int len){
 }
 
 
-unsigned char cipher[] = {108, 245, 65, 63, 125, 200, 150, 66, 17, 170, 207, 170, 34, 31, 70, 215, 0}; // hardcoded cypher, temporary to experiment
+// char cipher[] = {108, 245, 65, 63, 125, 200, 150, 66, 17, 170, 207, 170, 34, 31, 70, 215, 0}; // hardcoded cypher, temporary to experiment
 int main(int argc, char **argv){ 
   int size, rank;
-
   long upper = (1L <<56); //upper bound DES keys 2^56
   long mylower, myupper;
   MPI_Status status;
   MPI_Request req;
+  input_word(search, size);
+
+  char cipher [] = read_file("message.txt");
   int flag;
   int ciphlen = strlen(cipher);
+
+
+
   MPI_Comm comm = MPI_COMM_WORLD;
 
 
-  MPI_Init(NULL, NULL);
+  MPI_Init(&argc, &argv);
   MPI_Comm_size(comm, &size);
   MPI_Comm_rank(comm, &rank);
-
+  
 
   // divide ranges among processes
   int range_per_node = upper / size; 
@@ -116,7 +141,9 @@ int main(int argc, char **argv){
   }
 
   long found = 0;
-
+  if (rank == 0) {
+    encrypt(found, cipher, ciphlen);
+  }
   MPI_Irecv(&found, 1, MPI_LONG, MPI_ANY_SOURCE, MPI_ANY_TAG, comm, &req);
 
   for(int i = mylower; i<myupper && (found==0); ++i){
