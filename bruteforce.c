@@ -45,7 +45,7 @@ char* read_file(const char* file){
 /*
 Input what to search for 
 */
-void input_word(char **search, size_t size){
+void read_file(char **search, size_t size){
   char buffer[32];
   if (scanf("%31s", buffer)){
     perror("error");
@@ -59,6 +59,17 @@ void input_word(char **search, size_t size){
   }
   strcpy(*search, buffer);
 }
+
+void write_file(const char* filename, const char* data, size_t len) {
+    FILE *f = fopen(filename, "wb");
+    if (!f) {
+        perror("Error opening output file");
+        exit(1);
+    }
+    fwrite(data, 1, len, f);
+    fclose(f);
+}
+
 
 /*
 long key : key to use to decrypt
@@ -92,9 +103,8 @@ void encrypt(long key, char *ciph, int len){
     DES_ecb_encrypt((DES_cblock *)(ciph+i), (DES_cblock *)(ciph+i), &schedule, DES_ENCRYPT);
 }
 
-// char search[] = " nombre "; // search word , hard coded, needs fixing
-char *search;
-size_t size;
+char search[] = " CONLLAVE "; // search word , hard coded, needs fixing
+// char *search;
 
 /*
 Tries different key combinations and returns a substring containing the match word
@@ -115,7 +125,27 @@ int main(int argc, char **argv){
   long mylower, myupper;
   MPI_Status status;
   MPI_Request req;
-  input_word(search, size);
+  
+  // encrypt only 
+  if (argc > 3 && strcmp(argv[4], "encrypt") == 0) {
+      char *plaintext = read_file(argv[2]);
+      int len = strlen(plaintext);
+      // Pad to multiple of 8 for DES
+      int padded_len = ((len + 7) / 8) * 8;
+      char *buffer = calloc(1, padded_len + 1);
+      memcpy(buffer, plaintext, len);
+
+      long key = atol(argv[3]);
+      encrypt(key, buffer, padded_len);
+      write_file("output.bin", buffer, padded_len);
+
+      free(plaintext);
+      free(buffer);
+      return 0;
+    }
+
+
+  read_file(search, size);
 
   char cipher [] = read_file("message.txt");
   int flag;
