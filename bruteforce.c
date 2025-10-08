@@ -19,6 +19,7 @@ char* read_file(const char* file){
   FILE *f = fopen(file, "rb");
   if (f == NULL){
     printf("Error opening file\n");
+    MPI_Abort(MPI_COMM_WORLD, 1);
     exit(1);
   }
   fseek(f, 0, SEEK_END);
@@ -29,11 +30,13 @@ char* read_file(const char* file){
   if (string == NULL){
     perror("Error allocating memory\n");
     fclose(f);
+    MPI_Abort(MPI_COMM_WORLD, 1);
     exit(1);
   }
-  if (fread(string, 1, fsize, f) != 1) {
-    perror("Error reading file\n");
+  if (fread(string, 1, fsize, f) != fsize) {
+    perror("Error in fread\n");
     fclose(f);
+    MPI_Abort(MPI_COMM_WORLD, 1);
     exit(1);
   }
   
@@ -45,7 +48,7 @@ char* read_file(const char* file){
 /*
 Input what to search for 
 */
-void read_file(char **search, size_t size){
+void input_search(char **search, size_t *size){
   char buffer[32];
   if (scanf("%31s", buffer)){
     perror("error");
@@ -128,7 +131,7 @@ int main(int argc, char **argv){
   
   // encrypt only 
   if (argc > 3 && strcmp(argv[4], "encrypt") == 0) {
-      char *plaintext = read_file(argv[2]);
+      char *plaintext = read_file(argv[5]);
       int len = strlen(plaintext);
       // Pad to multiple of 8 for DES
       int padded_len = ((len + 7) / 8) * 8;
@@ -141,13 +144,14 @@ int main(int argc, char **argv){
 
       free(plaintext);
       free(buffer);
+      MPI_Finalize();
       return 0;
     }
 
 
-  read_file(search, size);
+  // input_search(search, size);
 
-  char cipher [] = read_file("message.txt");
+  char *cipher  = read_file("message.txt");
   int flag;
   int ciphlen = strlen(cipher);
 
@@ -191,7 +195,7 @@ int main(int argc, char **argv){
     decrypt(found, (char *)cipher, ciphlen);
     printf("%li %s\n", found, cipher);
   }
-
+  free(cipher);
   MPI_Finalize();
 }
 
