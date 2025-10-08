@@ -1,13 +1,10 @@
-// bruteforce.c
-// Versión corregida para Project2 - MPI
-// Soporta:
+// Compilar:
+//   mpicc -w bruteforce.c -o bruteforce -lcrypto
+
+// Comandos para usar:
 //   mpirun -np 1 ./bruteforce encrypt <key> <infile> <outfile>
 //   mpirun -np N ./bruteforce brute <cipherfile> <keyword>
-//
-// Compilar:
-//   mpicc -w bruteforce.c -o bruteforce -lssl -lcrypto
-//
-// Nota: para pruebas use un 'upper' pequeño (ver comentario más abajo).
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,7 +15,7 @@
 
 #define TAG_FOUND 1234
 
-// lee archivo binario/texto, devuelve buffer terminado en '\0' y *out_len
+
 char* read_file_bin(const char* path, int *out_len) {
   FILE *f = fopen(path, "rb");
   if (!f) { perror("fopen"); return NULL; }
@@ -44,17 +41,16 @@ int write_file_bin(const char* path, const char* data, int len) {
 
 int pad8_up(int n) { return ((n + 7) / 8) * 8; }
 
-// Crea el bloque DES a partir de long y ajusta paridad
+// Crea el Des y ajusta paridad
 void set_key_from_long(long key, DES_cblock *out) {
   unsigned char tmp[8] = {0};
-  // copiamos la representación de key en tmp (little-endian típico en x86/WSL)
   size_t copy_len = sizeof(long) < 8 ? sizeof(long) : 8;
   memcpy(tmp, &key, copy_len);
   memcpy(out, tmp, 8);
-  DES_set_odd_parity(out); // asegurar paridad impar por byte
+  DES_set_odd_parity(out);
 }
 
-// convierte DES_cblock a long (para comparar/mostrar la "clave normalizada")
+// Convierte la clave a una normalizada
 long des_cblock_to_long(const DES_cblock *kb) {
   long val = 0;
   unsigned char tmp[8];
@@ -67,7 +63,6 @@ void des_decrypt_blockwise(long key, char *buf, int len) {
   DES_cblock keyblock;
   DES_key_schedule ks;
   set_key_from_long(key, &keyblock);
-  // DES_set_key_checked puede fallar si la clave es débil; aun así intentamos usarla.
   DES_set_key_checked(&keyblock, &ks);
   for (int i = 0; i < len; i += 8) {
     DES_ecb_encrypt((DES_cblock *)(buf + i), (DES_cblock *)(buf + i), &ks, DES_DECRYPT);
@@ -84,7 +79,7 @@ void des_encrypt_blockwise(long key, char *buf, int len) {
   }
 }
 
-// intenta la key: devuelve 1 si encuentra keyword en texto descifrado
+// Se hace un intento de encontrar la key: devuelve 1 si encuentra keyword en texto descifrado
 int tryKey(long key, const char *cipher, int clen, const char *keyword) {
   char *tmp = malloc(clen + 1);
   if (!tmp) return 0;
@@ -118,7 +113,7 @@ int main(int argc, char **argv) {
       MPI_Finalize();
       return 1;
     }
-    if (rank != 0) { MPI_Finalize(); return 0; } // sólo rank 0 hace encrypt
+    if (rank != 0) { MPI_Finalize(); return 0; }
 
     long key = atol(argv[2]);
     int inlen;
@@ -129,7 +124,7 @@ int main(int argc, char **argv) {
     char *buf = calloc(1, padded);
     memcpy(buf, plaintext, inlen);
 
-    // mostrar la clave normalizada que DES usará
+    // Se muestra la clave normalizada (con paridad ajustada)
     DES_cblock kb;
     set_key_from_long(key, &kb);
     long normalized = des_cblock_to_long(&kb);
@@ -178,62 +173,107 @@ int main(int argc, char **argv) {
     }
   }
 
-  // compartir tamaño y contenido con todos (Bcast)
+  // compartir tamaño y contenido con todos
   MPI_Bcast(&clen, 1, MPI_INT, 0, MPI_COMM_WORLD);
   if (clen <= 0) { if (rank==0) fprintf(stderr,"Error: clen <= 0\n"); MPI_Finalize(); return 1; }
   if (rank != 0) {
     cipher = malloc(clen + 1);
     if (!cipher) { perror("malloc cipher worker"); MPI_Abort(MPI_COMM_WORLD, 1); }
   }
-  MPI_Bcast(cipher, clen + 1, MPI_CHAR, 0, MPI_COMM_WORLD); // incluyo terminador
+  MPI_Bcast(cipher, clen + 1, MPI_CHAR, 0, MPI_COMM_WORLD);
 
-  // Espacio de búsqueda DES: default 2^56
   long upper = (1L << 56);
-  // ---------------------------------------------------------
-  // Para pruebas rápidas en tu máquina local: cambia temporalmente a:
-  // long upper = (1L << 24); // ~16M keys -> rápida para debug
-  // ---------------------------------------------------------
-
-  // Para debug: si quieres reducir desde aquí sin editar el archivo fuente,
-  // puedes setear una variable de entorno UPPER_LIMIT (no implementado aquí,
-  // es preferible editar el código para pruebas rápidas).
+  char *env_upper = getenv("UPPER_LIMIT");
+  if (env_upper) {
+    long v = atol(env_upper);
+    if (v > 0) {
+      upper = v;
+      if (rank == 0) fprintf(stdout, "Using UPPER_LIMIT from env: %ld\n", upper);
+    }
+  }
 
   MPI_Barrier(MPI_COMM_WORLD);
   double t0 = MPI_Wtime();
 
-  long found = 0;      // 0 => no encontrado aún
-  long local_found = 0; // si este proceso encuentra -> guarda la key
+  long found = 0;
+  long local_found = 0;
   MPI_Status status;
   int flag = 0;
 
-  // Estrategia: búsqueda intercalada (stride = nprocs)
+  long log_interval = 1000000;
+  char *env = getenv("CHECK_LOG_INTERVAL");
+  if (env) {
+    long v = atol(env);
+    if (v > 0) log_interval = v;
+  }
+
+  long aggregate_interval = log_interval * 10;
+  char *envagg = getenv("AGGREGATE_LOG_INTERVAL");
+  if (envagg) {
+    long v = atol(envagg);
+    if (v > 0) aggregate_interval = v;
+  }
+
+  long local_trials = 0;
+  double last_log_time = MPI_Wtime();
+  long local_at_last_agg = 0;
+  double last_agg_time = MPI_Wtime();
+
   for (long k = rank; k < upper; k += nprocs) {
-    // check si otro proceso anunció llave (no bloqueante)
-    MPI_Iprobe(MPI_ANY_SOURCE, TAG_FOUND, MPI_COMM_WORLD, &flag, &status);
-    if (flag) {
-      MPI_Recv(&found, 1, MPI_LONG, MPI_ANY_SOURCE, TAG_FOUND, MPI_COMM_WORLD, &status);
-      // otro proceso encontró; salir
-      break;
-    }
-    // probar esta llave
     if (tryKey(k, cipher, clen, keyword)) {
       local_found = k;
-      // notificar a todos (non-blocking sends para evitar potencial bloqueo)
+      DES_cblock kb_local;
+      set_key_from_long(local_found, &kb_local);
+      long normalized_local = des_cblock_to_long(&kb_local);
+      char *tmp_local = malloc(clen + 1);
+      if (tmp_local) {
+        memcpy(tmp_local, cipher, clen);
+        tmp_local[clen] = '\0';
+        des_decrypt_blockwise(local_found, tmp_local, clen);
+      }
+      fprintf(stdout, "[rank %d] Found LOCAL key raw=%ld normalized=%ld (k=%ld)\nDecrypted prefix: %.256s\n", rank, local_found, normalized_local, k, tmp_local ? tmp_local : "(no tmp)");
+      fflush(stdout);
+      fflush(stdout);
       for (int dest = 0; dest < nprocs; ++dest) {
         if (dest == rank) continue;
         MPI_Request req;
         MPI_Isend(&local_found, 1, MPI_LONG, dest, TAG_FOUND, MPI_COMM_WORLD, &req);
-        // no guardamos req (pequeña posibilidad de buffering) — para cluster pequeño está OK
       }
-      // además, setear found localmente
       found = local_found;
+      if (tmp_local) free(tmp_local);
       break;
     }
-    // reset flag para la siguiente iteración
+
+    local_trials++;
+    if ((local_trials % log_interval) == 0) {
+      double now = MPI_Wtime();
+      double dt = now - last_log_time;
+      double rate = (dt > 0) ? (double)log_interval / dt : 0.0;
+      long approx_done = k - rank + nprocs;
+      double percent = (upper > 0) ? ((double)approx_done / (double)upper) * 100.0 : 0.0;
+      fprintf(stdout, "[rank %d] tried ~%ld keys, rate=%.0f keys/s, approx=%.6f%% (k=%ld)\n", rank, local_trials, rate, percent, k);
+      fflush(stdout);
+      last_log_time = now;
+    }
+
+    // Ver si otro proceso ya encontró la key
+    MPI_Iprobe(MPI_ANY_SOURCE, TAG_FOUND, MPI_COMM_WORLD, &flag, &status);
+    if (flag) {
+      MPI_Recv(&found, 1, MPI_LONG, MPI_ANY_SOURCE, TAG_FOUND, MPI_COMM_WORLD, &status);
+      DES_cblock kb_recv;
+      set_key_from_long(found, &kb_recv);
+      long normalized_recv = des_cblock_to_long(&kb_recv);
+      if (rank == 0) {
+        fprintf(stdout, "[rank %d] Received announced key raw=%ld normalized=%ld from rank %d\n", rank, found, normalized_recv, status.MPI_SOURCE);
+      } else {
+        fprintf(stdout, "[rank %d] Notified of found key raw=%ld normalized=%ld from rank %d\n", rank, found, normalized_recv, status.MPI_SOURCE);
+      }
+      fflush(stdout);
+      break;
+    }
     flag = 0;
   }
 
-  // Todos los procesos realizan un Allreduce (MAX) para obtener la key global encontrada (si existe)
   long global_found = 0;
   MPI_Allreduce(&found, &global_found, 1, MPI_LONG, MPI_MAX, MPI_COMM_WORLD);
 
@@ -242,11 +282,10 @@ int main(int argc, char **argv) {
 
   if (rank == 0) {
     if (global_found) {
-      // mostrar raw y normalized (parity) para evitar confusión
+      // mostrar raw y normalized para evitar confusión
       DES_cblock kb;
       set_key_from_long(global_found, &kb);
       long normalized = des_cblock_to_long(&kb);
-      // descifrar una copia y mostrar prefijo
       char *tmp = malloc(clen + 1);
       memcpy(tmp, cipher, clen);
       tmp[clen] = '\0';
@@ -260,8 +299,8 @@ int main(int argc, char **argv) {
     printf("[rank 0] elapsed time = %.6f s (nprocs=%d)\n", elapsed, nprocs);
   }
 
-  // Optional: cada proceso puede imprimir su tiempo
-  // printf("[rank %d] elapsed time = %.6f s\n", rank, elapsed);
+
+  printf("[rank %d] elapsed time = %.6f s\n", rank, elapsed);
 
   free(cipher);
   MPI_Finalize();
