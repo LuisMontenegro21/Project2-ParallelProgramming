@@ -19,7 +19,10 @@ Ideally use OpenSSL > 3.0. To check for the version you downloaded use:
 `openssl version` 
 
 ### Compile
+
 Compile code using: <br>
 `mpicc -w bruteforce.c -o bruteforce -lcrypto`
 And run using: <br>
 `mpirun -np 4 bruteforce`
+Or use to encrypt:<br>
+`mpirun -np 1 bruteforce encrypt message.txt`
