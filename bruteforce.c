@@ -163,6 +163,29 @@ int main(int argc, char **argv) {
   if (rank == 0) {
     cipher = read_file_bin(cipherfile, &clen);
     if (!cipher) { fprintf(stderr, "Rank 0: cannot read %s\n", cipherfile); MPI_Abort(MPI_COMM_WORLD, 1); }
+    
+    if (clen >= 4) {
+      unsigned char *uc = (unsigned char*)cipher;
+      int is_null4 = (uc[0] == 0 && uc[1] == 0 && uc[2] == 0 && uc[3] == 0);
+      int is_ascii_0000 = (uc[0] == '0' && uc[1] == '0' && uc[2] == '0' && uc[3] == '0');
+      char *env_strip = getenv("STRIP_HEADER");
+      int force_strip = env_strip ? atoi(env_strip) : 0;
+      if (is_null4 || is_ascii_0000 || force_strip) {
+        int newlen = clen - 4;
+        if (newlen > 0) {
+          char *buf = malloc(newlen + 1);
+          if (buf) {
+            memcpy(buf, cipher + 4, newlen);
+            buf[newlen] = '\0';
+            fprintf(stdout, "Rank 0: stripped 4-byte header from %s (bytes: %02X %02X %02X %02X), new length=%d\n",
+                    cipherfile, uc[0], uc[1], uc[2], uc[3], newlen);
+            free(cipher);
+            cipher = buf;
+            clen = newlen;
+          }
+        }
+      }
+    }
     int padded = pad8_up(clen);
     if (padded != clen) {
       char *buf = calloc(1, padded + 1);
@@ -298,7 +321,6 @@ int main(int argc, char **argv) {
     }
     printf("[rank 0] elapsed time = %.6f s (nprocs=%d)\n", elapsed, nprocs);
   }
-
 
   printf("[rank %d] elapsed time = %.6f s\n", rank, elapsed);
 
