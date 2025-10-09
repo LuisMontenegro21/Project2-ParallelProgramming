@@ -12,13 +12,19 @@
 #include <mpi.h>
 #include <openssl/des.h>
 #include <unistd.h>
+#include <openssl/des.h> // deprecated for OpenSSl 3.0, but still usable. May show warnings
+#include <time.h>
 
-#define TAG_FOUND 1234
 
-
-char* read_file_bin(const char* path, int *out_len) {
-  FILE *f = fopen(path, "rb");
-  if (!f) { perror("fopen"); return NULL; }
+/*
+Reads file and returns a pointer to the content
+*/
+char* read_file(const char* file){
+  FILE *f = fopen(file, "rb");
+  if (f == NULL){
+    printf("Error opening file\n");
+    exit(1);
+  }
   fseek(f, 0, SEEK_END);
   long sz = ftell(f);
   fseek(f, 0, SEEK_SET);
